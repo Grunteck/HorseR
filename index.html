@@ -67,6 +67,19 @@
             box-sizing: border-box;
         }
 
+        #fullscreen-button {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            padding: 10px 15px;
+            background: rgba(76, 175, 80, 0.8);
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            z-index: 1000;
+        }
+
         @media screen and (max-width: 768px) and (orientation: portrait) {
             #orientation-warning {
                 display: flex;
@@ -103,6 +116,8 @@
         <button onclick="window.location.reload()" style="padding: 10px 20px; margin-top: 20px; background: #4CAF50; color: white; border: none; border-radius: 5px; cursor: pointer;">Перезагрузить</button>
     </div>
 
+    <button id="fullscreen-button" style="display: none;">Полный экран</button>
+
     <div id="unity-container" class="unity-desktop">
         <canvas id="unity-canvas" width=1280 height=720 tabindex="-1"></canvas>
         <div id="unity-loading-bar">
@@ -125,6 +140,10 @@
         var warningBanner = document.querySelector("#unity-warning");
         var errorContainer = document.querySelector("#error-container");
         var errorMessage = document.querySelector("#error-message");
+        var fullscreenButton = document.querySelector("#fullscreen-button");
+
+        // Флаг для отслеживания первого взаимодействия
+        var userInteracted = false;
 
         function showError(message) {
             errorMessage.textContent = message;
@@ -172,6 +191,18 @@
             }
         }
 
+        // Безопасный запрос полноэкранного режима
+        function safeRequestFullscreen() {
+            if (typeof unityInstance !== 'undefined' && userInteracted) {
+                try {
+                    unityInstance.SetFullscreen(1);
+                    fullscreenButton.style.display = 'none';
+                } catch (e) {
+                    console.warn("Не удалось включить полноэкранный режим:", e);
+                }
+            }
+        }
+
         // Проверка поддержки WebAssembly
         if (typeof WebAssembly !== "object") {
             showError("Ваш браузер не поддерживает WebAssembly. Пожалуйста, обновите браузер.");
@@ -211,18 +242,6 @@
                 canvas.style.width = containerWidth + 'px';
                 canvas.style.height = (containerWidth / targetRatio) + 'px';
             }
-
-            // Обновляем размер в Unity, если экземпляр уже создан
-            if (typeof unityInstance !== 'undefined') {
-                try {
-                    unityInstance.SetFullscreen(0);
-                    setTimeout(() => {
-                        unityInstance.SetFullscreen(1);
-                    }, 100);
-                } catch (e) {
-                    console.warn("Не удалось обновить полноэкранный режим:", e);
-                }
-            }
         }
 
         // Обработчики изменения размера и ориентации
@@ -232,13 +251,35 @@
         });
 
         window.addEventListener('orientationchange', function () {
-            // Для iOS даем больше времени на обработку изменения ориентации
             var isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
             setTimeout(function () {
                 checkOrientation();
                 updateCanvasSize();
             }, isIOS ? 500 : 300);
         });
+
+        // Обработчик клика для активации звука и полноэкранного режима
+        document.addEventListener('click', function () {
+            if (!userInteracted) {
+                userInteracted = true;
+                // Показываем кнопку полноэкранного режима после первого клика
+                fullscreenButton.style.display = 'block';
+
+                // Пытаемся разблокировать аудио контекст если нужно
+                try {
+                    if (typeof unityInstance !== 'undefined' && unityInstance.Module && unityInstance.Module.context) {
+                        if (unityInstance.Module.context.state === 'suspended') {
+                            unityInstance.Module.context.resume();
+                        }
+                    }
+                } catch (e) {
+                    console.warn("Не удалось разблокировать аудио:", e);
+                }
+            }
+        });
+
+        // Обработчик кнопки полноэкранного режима
+        fullscreenButton.addEventListener('click', safeRequestFullscreen);
 
         // Проверяем ориентацию при загрузке
         document.addEventListener('DOMContentLoaded', checkOrientation);
@@ -248,23 +289,11 @@
         setInterval(checkOrientation, 1000);
 
         if (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
-            // Мобильные устройства
             var meta = document.createElement('meta');
             meta.name = 'viewport';
             meta.content = 'width=device-width, height=device-height, initial-scale=1.0, user-scalable=no, shrink-to-fit=yes';
             document.getElementsByTagName('head')[0].appendChild(meta);
             container.className = "unity-mobile";
-
-            // Пытаемся заблокировать ориентацию
-            try {
-                if (screen.orientation && screen.orientation.lock) {
-                    screen.orientation.lock('landscape').catch(function (error) {
-                        console.log('Orientation lock failed: ', error);
-                    });
-                }
-            } catch (e) {
-                console.warn("Не удалось заблокировать ориентацию:", e);
-            }
         }
 
         // Инициализируем размер при загрузке
@@ -280,7 +309,9 @@
                 updateCanvasSize();
                 checkOrientation();
 
-                // Для iOS отправляем событие resize после загрузки
+                // Убираем автоматический вызов полноэкранного режима
+                // Вместо этого показываем кнопку для пользователя
+
                 if (/iPhone|iPad|iPod/i.test(navigator.userAgent)) {
                     setTimeout(() => {
                         window.dispatchEvent(new Event('resize'));
@@ -297,7 +328,6 @@
         var script = document.createElement("script");
         script.src = loaderUrl;
         script.onload = () => {
-            // Для iOS добавляем небольшую задержку перед созданием экземпляра Unity
             if (/iPhone|iPad|iPod/i.test(navigator.userAgent)) {
                 setTimeout(() => {
                     initializeUnity();
