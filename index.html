@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en-us">
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <title>Unity WebGL Player | horses</title>
+    <link rel="shortcut icon" href="TemplateData/favicon.ico">
+    <link rel="stylesheet" href="TemplateData/style.css">
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: #000;
+        }
+
+        #unity-container {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        #unity-canvas {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+
+        #orientation-warning {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            z-index: 9999;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            text-align: center;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+
+        #error-container {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: #000;
+            color: white;
+            z-index: 10000;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            text-align: center;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+
+        @media screen and (max-width: 768px) and (orientation: portrait) {
+            #orientation-warning {
+                display: flex;
+            }
+
+            #unity-container {
+                display: none;
+            }
+        }
+
+        @media screen and (orientation: landscape) {
+            #orientation-warning {
+                display: none;
+            }
+
+            #unity-container {
+                display: flex;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="orientation-warning">
+        <h2>Пожалуйста, переверните устройство</h2>
+        <p>Для игры требуется горизонтальная ориентация экрана</p>
+        <button onclick="checkOrientation()" style="padding: 10px 20px; margin-top: 20px; background: #4CAF50; color: white; border: none; border-radius: 5px; cursor: pointer;">
+            Я повернул устройство
+        </button>
+    </div>
+
+    <div id="error-container">
+        <h2>Ошибка загрузки игры</h2>
+        <p id="error-message">Пожалуйста, попробуйте перезагрузить страницу</p>
+        <button onclick="window.location.reload()" style="padding: 10px 20px; margin-top: 20px; background: #4CAF50; color: white; border: none; border-radius: 5px; cursor: pointer;">Перезагрузить</button>
+    </div>
+
+    <div id="unity-container" class="unity-desktop">
+        <canvas id="unity-canvas" width=1280 height=720 tabindex="-1"></canvas>
+        <div id="unity-loading-bar">
+            <div id="unity-logo"></div>
+            <div id="unity-progress-bar-empty">
+                <div id="unity-progress-bar-full"></div>
+            </div>
+        </div>
+        <div id="unity-warning"> </div>
+        <div id="unity-footer">
+            <div id="unity-webgl-logo"></div>
+            <div id="unity-build-title">horses</div>
+        </div>
+    </div>
+    <script>
+        var container = document.querySelector("#unity-container");
+        var canvas = document.querySelector("#unity-canvas");
+        var loadingBar = document.querySelector("#unity-loading-bar");
+        var progressBarFull = document.querySelector("#unity-progress-bar-full");
+        var warningBanner = document.querySelector("#unity-warning");
+        var errorContainer = document.querySelector("#error-container");
+        var errorMessage = document.querySelector("#error-message");
+
+        function showError(message) {
+            errorMessage.textContent = message;
+            errorContainer.style.display = 'flex';
+            loadingBar.style.display = 'none';
+            container.style.display = 'none';
+        }
+
+        function unityShowBanner(msg, type) {
+            function updateBannerVisibility() {
+                warningBanner.style.display = warningBanner.children.length ? 'block' : 'none';
+            }
+            var div = document.createElement('div');
+            div.innerHTML = msg;
+            warningBanner.appendChild(div);
+            if (type == 'error') {
+                div.style = 'background: red; padding: 10px;';
+                console.error(msg);
+            } else {
+                if (type == 'warning') {
+                    div.style = 'background: yellow; padding: 10px;';
+                    console.warn(msg);
+                }
+                setTimeout(function () {
+                    warningBanner.removeChild(div);
+                    updateBannerVisibility();
+                }, 5000);
+            }
+            updateBannerVisibility();
+        }
+
+        // Функция проверки ориентации
+        function checkOrientation() {
+            var isPortrait = window.innerHeight > window.innerWidth;
+            var warningElement = document.getElementById('orientation-warning');
+            var container = document.getElementById('unity-container');
+
+            if (isPortrait) {
+                warningElement.style.display = 'flex';
+                if (container) container.style.display = 'none';
+            } else {
+                warningElement.style.display = 'none';
+                if (container) container.style.display = 'flex';
+                updateCanvasSize();
+            }
+        }
+
+        // Проверка поддержки WebAssembly
+        if (typeof WebAssembly !== "object") {
+            showError("Ваш браузер не поддерживает WebAssembly. Пожалуйста, обновите браузер.");
+        }
+
+        var buildUrl = "Build";
+        var loaderUrl = buildUrl + "/buildscachki.loader.js";
+        var config = {
+            dataUrl: buildUrl + "/buildscachki.data",
+            frameworkUrl: buildUrl + "/buildscachki.framework.js",
+            codeUrl: buildUrl + "/buildscachki.wasm",
+            streamingAssetsUrl: "StreamingAssets",
+            companyName: "DefaultCompany",
+            productName: "horses",
+            productVersion: "1.0",
+            showBanner: unityShowBanner,
+        };
+
+        // Отключаем автоматическое изменение размера канваса
+        config.matchWebGLToCanvasSize = false;
+
+        // Функция для обновления размера канваса
+        function updateCanvasSize() {
+            var containerWidth = window.innerWidth;
+            var containerHeight = window.innerHeight;
+
+            // Сохраняем пропорции 16:9
+            var targetRatio = 16 / 9;
+            var currentRatio = containerWidth / containerHeight;
+
+            if (currentRatio > targetRatio) {
+                // Шире чем 16:9 - ограничиваем по высоте
+                canvas.style.width = (containerHeight * targetRatio) + 'px';
+                canvas.style.height = containerHeight + 'px';
+            } else {
+                // Уже чем 16:9 - ограничиваем по ширине
+                canvas.style.width = containerWidth + 'px';
+                canvas.style.height = (containerWidth / targetRatio) + 'px';
+            }
+
+            // Обновляем размер в Unity, если экземпляр уже создан
+            if (typeof unityInstance !== 'undefined') {
+                try {
+                    unityInstance.SetFullscreen(0);
+                    setTimeout(() => {
+                        unityInstance.SetFullscreen(1);
+                    }, 100);
+                } catch (e) {
+                    console.warn("Не удалось обновить полноэкранный режим:", e);
+                }
+            }
+        }
+
+        // Обработчики изменения размера и ориентации
+        window.addEventListener('resize', function () {
+            checkOrientation();
+            updateCanvasSize();
+        });
+
+        window.addEventListener('orientationchange', function () {
+            // Для iOS даем больше времени на обработку изменения ориентации
+            var isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+            setTimeout(function () {
+                checkOrientation();
+                updateCanvasSize();
+            }, isIOS ? 500 : 300);
+        });
+
+        // Проверяем ориентацию при загрузке
+        document.addEventListener('DOMContentLoaded', checkOrientation);
+        window.addEventListener('load', checkOrientation);
+
+        // Дополнительная проверка каждую секунду для браузеров типа Telegram
+        setInterval(checkOrientation, 1000);
+
+        if (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
+            // Мобильные устройства
+            var meta = document.createElement('meta');
+            meta.name = 'viewport';
+            meta.content = 'width=device-width, height=device-height, initial-scale=1.0, user-scalable=no, shrink-to-fit=yes';
+            document.getElementsByTagName('head')[0].appendChild(meta);
+            container.className = "unity-mobile";
+
+            // Пытаемся заблокировать ориентацию
+            try {
+                if (screen.orientation && screen.orientation.lock) {
+                    screen.orientation.lock('landscape').catch(function (error) {
+                        console.log('Orientation lock failed: ', error);
+                    });
+                }
+            } catch (e) {
+                console.warn("Не удалось заблокировать ориентацию:", e);
+            }
+        }
+
+        // Инициализируем размер при загрузке
+        updateCanvasSize();
+        loadingBar.style.display = "block";
+
+        function initializeUnity() {
+            createUnityInstance(canvas, config, (progress) => {
+                progressBarFull.style.width = 100 * progress + "%";
+            }).then((unityInstance) => {
+                window.unityInstance = unityInstance;
+                loadingBar.style.display = "none";
+                updateCanvasSize();
+                checkOrientation();
+
+                // Для iOS отправляем событие resize после загрузки
+                if (/iPhone|iPad|iPod/i.test(navigator.userAgent)) {
+                    setTimeout(() => {
+                        window.dispatchEvent(new Event('resize'));
+                        checkOrientation();
+                    }, 500);
+                }
+            }).catch((message) => {
+                showError("Ошибка загрузки игры: " + message);
+                console.error("Ошибка создания экземпляра Unity:", message);
+            });
+        }
+
+        // Создаем элемент script для загрузки загрузчика Unity
+        var script = document.createElement("script");
+        script.src = loaderUrl;
+        script.onload = () => {
+            // Для iOS добавляем небольшую задержку перед созданием экземпляра Unity
+            if (/iPhone|iPad|iPod/i.test(navigator.userAgent)) {
+                setTimeout(() => {
+                    initializeUnity();
+                }, 300);
+            } else {
+                initializeUnity();
+            }
+        };
+        script.onerror = (e) => {
+            showError("Ошибка загрузки игры. Пожалуйста, проверьте подключение к интернету.");
+            console.error("Ошибка загрузки скрипта:", e);
+        };
+        document.body.appendChild(script);
+    </script>
+</body>
+</html>
